@@ -1,0 +1,12 @@
+{
+  "name": "@etzhayyim/air-ffp-kotoba",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "kotoba impl of air-ffp (frequent-flyer program, Consensys c-split). kotoba-E2E split (ADR-2605181100): public tier-benefit catalog + de-identified tier-summary aggregates plaintext; enrollee PII (memberProfile) + per-member ledger (milesLedger, money as decimal strings) sealed via sdk.encryptedWrite/Read. Only the fiat merchant-of-record settlement rail (mile-purchase charge / transfer fee / IATA-BSP partner clearing) stays etzhayyim via consent-capability.",
+  "license": "Apache-2.0",
+  "main": "src/index.ts",
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": { "@etzhayyim/sdk": "git+https://github.com/etzhayyim/com-etzhayyim-sdk.git#12314a0cc5ac2feb49dd9789d5c002398acb6988" },
+  "devDependencies": { "@etzhayyim/sdk-mock": "git+https://github.com/etzhayyim/com-etzhayyim-sdk-mock.git#c857ff9be5310bf433bfe1e8d3c0f677e213d667", "typescript": "^5.6.0", "vitest": "^4.1.0" }
+}

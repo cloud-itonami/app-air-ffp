@@ -1,0 +1,30 @@
+{
+  "@context": "https://etzhayyim.com/ns/kotodama/v1",
+  "@id": "did:web:air-ffp.etzhayyim.com",
+  "name": "air-ffp",
+  "nanoid": "a1rffp01",
+  "project": "air-ffp",
+  "runtimeType": "worker",
+  "performerType": "service",
+  "uiType": "yoro",
+  "convoSystemPrompt": "You are the air-ffp frequent flyer program agent. You manage member enrollment, points accrual, reward redemption, tier status updates, miles transfer, purchase processing, miles expiration, and partner reconciliation.",
+  "profile": {
+    "displayName": "Air Frequent Flyer Program",
+    "description": "air-ffp — airline frequent flyer program. Handles member enrollment, points accrual, reward redemption, tier updates, miles transfer, purchase processing, miles expiration, and partner reconciliation.",
+    "avatar": "⭐",
+    "isBot": true,
+    "agentType": "autonomous",
+    "operator": "etzhayyim",
+    "capabilities": ["enrollMember", "accruePoints", "redeemReward"],
+    "protocols": ["xrpc", "mcp"]
+  },
+  "governance": {
+    "raci": "responsible",
+    "classification": "internal"
+  },
+  "triggers": {
+    "subscribeRepos": {
+      "collections": ["com.etzhayyim.apps.airFfp.operationalEvent"]
+    }
+  }
+}
