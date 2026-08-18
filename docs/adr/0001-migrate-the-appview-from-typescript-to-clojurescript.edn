@@ -1,0 +1,217 @@
+[{:db/id -1
+  :adr/id "app-air-ffp-0001"
+  :adr/title "appview を TypeScript/Svelte から ClojureScript へ移す"
+  :adr/status "accepted"
+  :adr/date "2026-08-18"
+  :adr/doc_type "adr"
+  :adr/source-format "edn"
+  :adr/body "
+# ADR-0001: appview を TypeScript/Svelte から ClojureScript へ移す
+
+**Status**: accepted / **Date**: 2026-08-18 / **Deciders**: Jun Kawasaki
+
+## Context — 測ったこと
+
+移行前の tree（23 tracked file）を測った結果:
+
+1. **wrangler.jsonc の `main` は、この tree に存在しないパスを指していた。**
+   `svelte/.svelte-kit/cloudflare/_worker.js` —— `git ls-files | grep -c
+   svelte-kit` は **0**、ディスク上にも無い。SvelteKit を先にビルドしなければ
+   deploy 単位そのものが存在しない。
+2. **`src/app.ts`（76 行、読み手が最初に開くファイル）はどの bundle にも
+   入っていない。** どこからも import されておらず（`git grep` で参照は
+   docs の散文 3 行のみ）、どの tsconfig の `include` にも入っていない
+   （tracked な tsconfig は `kotoba/` と `svelte/` の 2 つだけで、root には
+   無い）。`svelte/` 配下のファイルは `@sveltejs/kit` と `./$types` しか
+   import しないので、`svelte/` の外に在る `src/app.ts` は SvelteKit の
+   ビルドにも構造的に入り得ない。
+3. **公開ページが同じ repo の設定と矛盾していた。** `+page.svelte` は
+   `{routeCount: 0, routes: [], vars: []}` を literal で埋め込んでおり、隣の
+   wrangler.jsonc は route 2 パターン・var 8 個を宣言している。`relativePath`
+   も抽出前の monorepo のパス（`60-apps/etzhayyim-project-air-ffp/…`）のまま
+   だった。
+4. **deploy されていた handler は operation を 1 つも名指ししない。**
+   `svelte/src/routes/xrpc/[...path]/+server.ts` は rest parameter で受けた
+   NSID をそのまま MCP router へ `tools/call` として転送する汎用 pass-through
+   である。
+
+この workspace の正本言語は cljs と kotoba であって TypeScript ではない
+（superproject CLAUDE.md の runtime 順序: kotoba wasm > clojurewasm >
+ClojureScript > nbb）。
+
+## Decision
+
+**appview を ClojureScript に移し、appview の TypeScript と Svelte を撤去する。**
+
+    src/air_ffp/route.cljc    判断（どの handler が答えるか）
+    src/air_ffp/view.cljc     ページ（jp-go-dds の hiccup）
+    src/air_ffp/worker.cljs   Request/Response に触る唯一の層
+            ↓ shadow-cljs :target :esm
+    dist/worker.js            wrangler.jsonc の main が指すもの
+
+先例は同じ org の cloud-itonami/app-ongakuka と
+cloud-itonami-marketplace-listing。入口を .kotoba ではなく cljs に置くのは
+ADR-2606290000 の判断で、kotoba の ingress capability が :native-aot /
+:wasm-aot とも pending だからである。判断を .cljc に切り出してあるのは、
+ブラウザもビルドも無しにテストするためであり、ingress が qualify した時に
+最初に .kotoba へ移る部分だからでもある。
+
+### これで消えた欠陥
+
+- (1)(2) は構造的に消えた。main が指す bundle は src/ からコンパイルされる。
+  検証器が **shadow の :output-dir と wrangler の main と export の ns 名の
+  3 つが噛み合っていること**を検査する。
+- (3) も構造的に消えた。ページは route 表（air-ffp.route/routes）と env の
+  APP_CAPABILITIES を**引数で受け取って**描く。表示と実際に答えるものが
+  同じ 1 つの値から出る。
+- (4) は挙動として保存した。NSID の prefix で絞らない（下記）。
+
+## kotoba/ は消していない —— これは移行ではなく破壊になるところだった
+
+この repo には appview とは別に **`kotoba/`（TypeScript のドメインライブラリ、
+7 ファイル / 33,676 バイト、うち .ts が 5 本）** が在る。「TypeScript を全部
+消す」と読めば消える位置に在るが、測った結果は次のとおり:
+
+- **どの bundle にも入っていない** —— `svelte/`・`src/`・`wrangler.jsonc`・
+  root の package.json のどれからも参照されていない（`git grep kotoba` が
+  それらに対して 0 件）
+- **この移行が置き換えるものから参照されていない**（同上）
+- **依存が解決する** —— `@etzhayyim/sdk` と `@etzhayyim/sdk-mock` はどちらも
+  git URL 固定 SHA で、`git fetch <url> <sha>` が両方とも
+  **type=commit** を返した
+
+したがって dead ではなく、この移行の対象でもない。**残す。** README に
+測定つきで名指しし、検証器に**ファイル数 7 と .ts 数 5 を pin** して、
+黙って増えることも減ることもできないようにした。移行するなら、それが依存する
+ものに cljs の面を用意する別の決定が要る。
+
+## 持ち越さなかった経路（黙って消していない）
+
+`src/app.ts` に在って **どこにも deploy されていなかった** もののうち:
+
+- **dispatcher 経路**（`/xrpc/com.etzhayyim.apps.airFfp.*` →
+  `DISPATCHER_URL` へ `x-internal-secret` 付きで POST）。**2 つの理由で
+  dead** —— 既定の宛先 `dispatcher.etzhayyim.com` は `dig +short` が空
+  （NXDOMAIN）、かつ `DISPATCHER_URL` も `DISPATCHER_INTERNAL_SECRET` も
+  wrangler.jsonc の vars に**宣言が無い**。
+- **`/_app/meta`** —— `/health` と同じ body を返す別名。`/health` の方だけを
+  持ち越した。
+
+`/health` は持ち越した（外部依存も binding も要らず、deploy された面が
+答えることを外から確かめられる）。移行前は `src/app.ts` に在って deploy されて
+いなかったので、**これは移植ではなく追加である**と正直に書いておく。
+
+## 多段 XRPC パスは移行前と同じく転送する
+
+移行前の SvelteKit route は rest parameter `[...path]` で受けており、
+**空文字だけを 400** にして `a/b` はそのまま tool 名として転送していた。
+1 セグメントに絞ると失敗の起きる場所と応答が変わる —— **それは移行ではなく
+方針変更**なので、この commit には入れない。絞るなら別の決定として記録する。
+（同型の移行 cloud-itonami/app-lo・app-ongakuka で先にこの区別が行われている。）
+
+## UI
+
+基盤は jp-go-digital-design-system（skill kotoba-uiux が定める新規 UI の base）。
+色・寸法は --hig-* トークン契約のみ、raw hex も px フォントサイズも無い。
+app 固有 CSS は 3 行。CSS は shadow.resource/inline で bundle に焼く
+（design system の外部リクエストゼロ方針）。
+
+## 検証（この ADR を書いた時点で実際に通したもの）
+
+- **air-ffp.route-test: 6 tests / 30 assertions、0 failures**（nbb、ビルド不要）
+- **ページ描画 → design-quality 100.00 / 100（gate 95）。`--extra-axes` で
+  12 軸すべてを当てても 100.00。**
+- **scripts/verify-docs-claims.cljs: 20 claim すべて PASS、exit 0**
+- **`shadow-cljs release worker` が 55 files / 12 compiled / 0 warnings / 22.96s
+  で通り、dist/worker.js（246,654 バイト）を出した。**
+- **scripts/smoke-worker.cljs がその bundle を import して 22 項目 PASS、exit 0。**
+
+### 落ちることを確かめた検査（mutation）
+
+**「ビルドが通った」は検査ではなかった。** 実際に両方の置き場所で測った:
+
+| shadow-cljs.edn の置き場所 | 壊れた var | exit | bundle |
+|---|---|---|---|
+| `:compiler-options` | あり | **1** | **書かれない**（sha 不変 da6ce3de…、246,654 B）|
+| `:build-options` | あり | **0** | **新しく出荷された**（8a4c645b…、245,755 B、`1 warnings`）|
+
+`:build-options` 版の bundle を実際に叩くと
+`Cannot read properties of undefined (reading 'h')` —— **置き場所を間違えた
+`:warnings-as-errors` は、それ自身が『落ちようのない検査』である。**
+だから検証器はこれを **EDN として読んで**確かめる（grep しない ——
+shadow-cljs.edn のコメントにも検証器の docstring にも `:build-options` の
+文字列が入っており、grep はその散文に引っかかる）。
+
+**design system の検査は 2 本に割った。** `dads-table` が在ることだけを見る形は
+落ちない —— それは view が出力する markup で、CSS が 1 バイトも入っていない
+ページにも現れる。実測（このページ、2026-08-18）:
+
+| 探す文字列 | CSS 込み | CSS 無し |
+|---|---|---|
+| `dads-table` | 74 | **6**（0 にならない）|
+| `--color-primitive-blue` | 45 | **0** |
+
+`(rc/inline \"jp_go_dds/dds.css\")` を `\"\"` に替えて**再ビルドし**、
+smoke が `page carries the stylesheet itself` **だけ** 赤にし
+（`page uses the design system components` は緑のまま）exit 1 になることを
+確認した。
+
+**値の露出は印を 2 種類（隠す / 出す）で見る。** 片方だけだと「全部隠す」実装も
+「全部出す」実装も通る。出てはいけない印を `APP_UI_TYPE` の値に、出なければ
+いけない値を中継先 URL（`.invalid` なので実 DNS に依存しない）と
+`APP_CAPABILITIES` の中身に置いた。後者が出るということは、**capability 一覧を
+ページに焼いていない**ということでもある。
+
+その他に当てた mutation: ページが route 表を無視して空の表を描く /
+capability を env でなく literal から出す / 多段 XRPC を 1 セグメントに絞る
+—— それぞれ対応する検査だけが赤くなった。
+
+### もう 1 つ「落ちようのない検査」を見つけて直した —— EDN が読めることの検査
+
+検証器は当初 ADR と shadow-cljs.edn を `cljs.reader/read-string` にそのまま
+渡していた。**あれは最初の form だけを読んで残りを捨てる**ので、ファイル末尾に
+何を足しても緑のままになる。実測（この repo、2026-08-18）:
+
+    $ printf '[{:a 1}]\n{:unbalanced \"\n' > probe.edn
+    (read-string t)                => [{:a 1}]   ... vector? true  ← 緑
+    (read-string (str \"[\" t \"]\"))  => THREW: Unexpected EOF reading string
+
+いまは**全体を vector で包んでから読み、top-level form がちょうど 1 個**である
+ことを要求する（`read-whole-edn`）。3 通りで落として確かめた:
+
+| 壊し方 | 結果 |
+|---|---|
+| ADR の `]` の後ろに `{:unbalanced \"` を足す | `adr-is-tx-data` FAIL、exit 1 |
+| ADR の後ろに**妥当な**第 2 form を足す | `expected exactly 1 top-level form, got 2`、exit 1 |
+| shadow-cljs.edn の後ろに第 2 form を足す | UNDETERMINED、**exit 2**（合格と区別される）|
+
+包むだけで form 数を数えないと 2 つ目は通ってしまう —— だから両方を要求する。
+ADR が読めないことは **check の FAIL** であって undetermined ではない扱いにした
+（「答えられなかった」ではなく「主張が偽」だから）。
+
+### 外した mutation（実演として数えない）
+
+最初の『表を空にする』mutation では `/health` と `/xrpc/:nsid` が赤くなった
+一方、**`/` は緑のままだった** —— 素の `\"/\"` を HTML 全体から探す
+assertion は、あらゆる閉じタグに一致するので**落ちようがない**。表のセル
+（`<span class=\"ffp-mono\">/</span>`）を探す形に直してから当て直し、3 件とも
+赤くなることを確認した。**外した mutation の緑は実演ではない。**
+
+## Consequences
+
+- **appview の TypeScript は 0 本、正本言語（.cljs/.cljc）が 4 本**になった
+  （移行前は 3 対 0）。`kotoba/` の 5 本は別勘定で pin してある。
+- 継承した 5 ファイル（4,290 バイト）は 1 バイトも変わっていない
+  （sha256 を検証器に固定）。wrangler.jsonc だけは**意図的に変更**した
+  （main の付け替え、存在しない SvelteKit client を指す assets の撤去、
+  compatibility_flags の撤去、APP_FRAMEWORK の更新）。
+- `compatibility_flags`（nodejs_compat / nodejs_als）は adapter-cloudflare の
+  要求であってこの bundle のものではない。**憶測で消さず `wrangler dev --local`
+  で実 workerd に載せ、全 route を叩いてから撤去した**（手順と出力は
+  docs/operator-quickstart.md §4.6）。
+- **ホストは相変わらず NXDOMAIN である**（`air-ffp.etzhayyim.com` /
+  `a1rffp01.etzhayyim.com` / 中継先 `mcp.etzhayyim.com` の 3 つとも）。
+  移行はそれを直さない。deploy するか retire するかは別の決定。
+- **`MIGRATION-TODO.md` の憲章適合チェックボックス 7 件は未チェックのまま。**
+  移行はそれも直さない。
+"}]

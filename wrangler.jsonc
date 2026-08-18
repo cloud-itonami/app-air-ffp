@@ -1,21 +1,31 @@
 {
   "name": "kotodama-a1rffp01",
-  "main": "svelte/.svelte-kit/cloudflare/_worker.js",
+  // Compiled from src/air_ffp/worker.cljs by shadow-cljs (:target :esm).
+  // Before the cljs migration this pointed at "svelte/.svelte-kit/cloudflare/_worker.js"
+  // -- a path with no file behind it in this tree -- and `src/app.ts`, the file a
+  // reader opens, was imported by nothing and included by no tsconfig. See docs/adr/0001.
+  "main": "dist/worker.js",
   "compatibility_date": "2025-03-17",
-  "compatibility_flags": [
-    "nodejs_compat",
-    "nodejs_als"
-  ],
+  // NOTE: "compatibility_flags" (nodejs_compat / nodejs_als) was removed. Those were
+  // @sveltejs/adapter-cloudflare's requirement, not this bundle's. Removed only after
+  // running the flagless config under the real workerd via `wrangler dev --local` and
+  // hitting every route -- docs/operator-quickstart.md S4.6. Not removed on a guess.
+  //
+  // "assets" was removed with it: it bound ./svelte/.svelte-kit/cloudflare/client,
+  // a directory this tree never contained.
   "vars": {
     "APP_CAPABILITIES": "[\"enrollMember\",\"accruePoints\",\"redeemReward\"]",
     "APP_DESCRIPTION": "air-ffp — airline frequent flyer program. Handles member enrollment, points accrual, reward redemption, tier updates, miles transfer, purchase processing, miles expiration, and partner reconciliation.",
     "APP_DISPLAY_NAME": "Air Frequent Flyer Program",
-    "APP_FRAMEWORK": "sveltekit-edge-bff",
+    "APP_FRAMEWORK": "cljs-esm-worker",
     "APP_NANOID": "a1rffp01",
     "APP_PERFORMER_TYPE": "service",
     "APP_UI_TYPE": "yoro",
     "AGENTGATEWAY_MCP_ROUTER_URL": "https://mcp.etzhayyim.com/xrpc/com.etzhayyim.mcp.message"
   },
+  // Left as inherited. This is not Svelte residue -- it is a generic wrangler module
+  // rule -- and the tree has no .wasm file for it to match, so it is inert either way.
+  // Removing it would be a change the migration did not measure a reason for.
   "rules": [
     {
       "type": "CompiledWasm",
@@ -33,11 +43,5 @@
       "pattern": "air-ffp.etzhayyim.com/*",
       "zone_name": "etzhayyim.com"
     }
-  ],
-  "assets": {
-    "directory": "./svelte/.svelte-kit/cloudflare/client",
-    "binding": "ASSETS",
-    "html_handling": "auto-trailing-slash",
-    "not_found_handling": "none"
-  }
+  ]
 }

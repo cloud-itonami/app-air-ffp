@@ -1,0 +1,14 @@
+# shadow-cljs のビルド出力。wrangler.jsonc の main が指す先だが、生成物なので
+# commit しない（scripts/smoke-worker.cljs は「ビルドしてから」実行する gate で、
+# bundle が無ければ exit 2 = 判定できなかった、を返す）。
+dist/
+.shadow-cljs/
+node_modules/
+.cpcache/
+.wrangler/
+
+# shadow-cljs / npx が cwd に生やす npm の足跡。この repo の appview は npm
+# package ではない（root の package.json は移行で撤去した）ので、生えてきたら
+# 生成物として扱う。kotoba/package.json は **別物** で、追跡し続ける。
+/package.json
+/package-lock.json
