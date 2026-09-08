@@ -1,6 +1,6 @@
 (ns air-ffp.route-test
   (:require [clojure.test :refer [deftest is testing]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [air-ffp.route :as route]
             [air-ffp.view :as view]))
 
