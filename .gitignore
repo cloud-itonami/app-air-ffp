@@ -12,3 +12,6 @@ node_modules/
 # 生成物として扱う。kotoba/package.json は **別物** で、追跡し続ける。
 /package.json
 /package-lock.json
+
+# nbb dependency cache -- a build artifact, not source
+.nbb/
