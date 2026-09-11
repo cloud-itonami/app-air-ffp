@@ -122,7 +122,7 @@ app 固有 CSS は 3 行。CSS は shadow.resource/inline で bundle に焼く
 - **ページ描画 → design-quality 100.00 / 100（gate 95）。`--extra-axes` で
   12 軸すべてを当てても 100.00。**
 - **scripts/verify-docs-claims.cljs: 20 claim すべて PASS、exit 0**
-- **`shadow-cljs release worker` が 55 files / 12 compiled / 0 warnings / 22.96s
+- **`amu compile --target wasm32-browser worker` が 55 files / 12 compiled / 0 warnings / 22.96s
   で通り、dist/worker.js（246,654 バイト）を出した。**
 - **scripts/smoke-worker.cljs がその bundle を import して 22 項目 PASS、exit 0。**
 

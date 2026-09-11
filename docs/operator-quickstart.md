@@ -29,7 +29,7 @@ Cloudflare のアカウントは要らない（§5 の deploy だけが要る）
 git clone git@github.com:cloud-itonami/app-air-ffp.git
 cd app-air-ffp
 REPO=$PWD
-npx --yes nbb scripts/verify-docs-claims.cljs .
+npx --yes kbb --backend sci scripts/verify-docs-claims.cljk .
 ```
 
 実際の出力（末尾）:
@@ -67,7 +67,7 @@ cat > /tmp/run.cljs <<'EOF'
 (require '[cljs.test :refer [run-tests]] 'air-ffp.route-test)
 (run-tests 'air-ffp.route-test)
 EOF
-npx --yes nbb --classpath "$CP" /tmp/run.cljs
+npx --yes kbb --backend sci --classpath "$CP" /tmp/run.cljs
 ```
 
 実際の出力:
@@ -137,9 +137,9 @@ cat > /tmp/render.cljs <<'EOF'
                   :mcp-url "https://mcp.etzhayyim.com/xrpc/com.etzhayyim.mcp.message"}))
   (println "ok"))
 EOF
-DDS="$K/jp-go-digital-design-system" npx --yes nbb --classpath "$CP" /tmp/render.cljs
+DDS="$K/jp-go-digital-design-system" npx --yes kbb --backend sci --classpath "$CP" /tmp/render.cljs
 
-cd $K/design-quality && npx --yes nbb -m design-quality.cli score /tmp/ffp-page.html --min 95
+cd $K/design-quality && npx --yes kbb --backend sci -m design-quality.cli score /tmp/ffp-page.html --min 95
 ```
 
 実際の出力（末尾）:
@@ -177,7 +177,7 @@ findings: overflow-guard headroom=0.03 / focus-visible headroom=0.00
 ```bash
 cd "$REPO"
 node ~/github/com-junkawasaki/scripts/resource-guard.mjs run build -- \
-  npx --yes shadow-cljs release worker
+  npx --yes amu compile --target wasm32-browser worker
 ls -la dist/worker.js
 ```
 
@@ -234,7 +234,7 @@ UNDETERMINED	could not exercise the bundle: Cannot read properties of undefined 
 ここが deploy されるものに触る唯一の検査である。
 
 ```bash
-cd "$REPO" && npx --yes nbb scripts/smoke-worker.cljs dist/worker.js
+cd "$REPO" && npx --yes kbb --backend sci scripts/smoke-worker.cljk dist/worker.js
 ```
 
 実際の出力（22 項目、末尾）:
