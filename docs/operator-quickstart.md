@@ -172,7 +172,7 @@ findings: overflow-guard headroom=0.03 / focus-visible headroom=0.00
 ## 4. bundle をビルドする
 
 **高負荷ビルドは workspace 全体で同時 1 本に制限されている**（superproject
-`CLAUDE.md` の resource governor）。直接叩かず、必ず guard 経由で:
+`AGENTS.md` の resource governor）。直接叩かず、必ず guard 経由で:
 
 ```bash
 cd "$REPO"

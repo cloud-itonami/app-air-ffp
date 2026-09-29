@@ -36,7 +36,7 @@
    である。
 
 この workspace の正本言語は cljs と kotoba であって TypeScript ではない
-（superproject CLAUDE.md の runtime 順序: kotoba wasm > clojurewasm >
+（superproject AGENTS.md の runtime 順序: kotoba wasm > clojurewasm >
 ClojureScript > nbb）。
 
 ## Decision
