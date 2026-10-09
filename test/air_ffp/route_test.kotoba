@@ -89,3 +89,31 @@
       (is (= "application/json" (get h "content-type")))
       (is (= "com.a.b" (get h "x-etzhayyim-xrpc-method")))
       (is (= "cljs-worker" (get h "x-etzhayyim-bff"))))))
+
+(deftest static-edition-advertises-only-what-it-has
+  (testing "静的版（IPFS）には Worker が居ない。/health・/xrpc・中継先・env のキーを出さない"
+    ;; 静的版にも Worker と同じ opts を渡す —— 渡されても出さないことを見る。
+    ;; 渡さずに『出ていない』を見ても、それは何も検査していない。
+    (let [opts {:css "/*x*/" :routes route/routes
+                :vars [:AGENTGATEWAY_MCP_ROUTER_URL :APP_CAPABILITIES :APP_NANOID :APP_UI_TYPE]
+                :capabilities (route/declared-capabilities
+                               "[\"enrollMember\",\"accruePoints\",\"redeemReward\"]")
+                :mcp-url (route/mcp-router-url {})}
+          worker (view/render opts)
+          static (view/render (assoc opts :static? true))]
+      (is (not (str/includes? static "/xrpc")))
+      (is (not (str/includes? static "/health")))
+      (is (not (str/includes? static (route/mcp-router-url {}))))
+      (is (not (str/includes? static "mcp.etzhayyim.com")))
+      (doseq [k ["AGENTGATEWAY_MCP_ROUTER_URL" "APP_CAPABILITIES" "APP_NANOID" "APP_UI_TYPE"]]
+        (is (not (str/includes? static k)) (str k " が静的版に出ている")))
+      (testing "静的版が持つものは出す: ページの route と、ビルド時に読んだ capability"
+        (is (str/includes? static "<span class=\"ffp-mono\">/</span>"))
+        (is (str/includes? static "enrollMember"))
+        (is (str/includes? static "ipns://")))
+      (testing "Worker 版は従来どおり全部出す（静的版の文言も混ざらない）"
+        (is (str/includes? worker "<span class=\"ffp-mono\">/xrpc/:nsid</span>"))
+        (is (str/includes? worker "<span class=\"ffp-mono\">/health</span>"))
+        (is (str/includes? worker (route/mcp-router-url {})))
+        (is (str/includes? worker "APP_NANOID"))
+        (is (not (str/includes? worker "ipns://")))))))

@@ -1,0 +1,93 @@
+#!/usr/bin/env kbb
+;; render-static — IPFS に置く静的版を描いて dist/static/index.html に書く。
+;;
+;; 静的版は Worker 無しで ipns://{k51} / {k51}.ipns の gateway origin から配る。
+;; Worker の `GET /` はどの request にも同じ文書を返すので、それをビルド時に 1 度
+;; 描けば足りる —— ただし `:static? true` で描く。静的版には `/health` も
+;; `/xrpc/:nsid` も中継先も env も無いので、ページはそれらを広告しない
+;; （air-ffp.view/body の docstring）。Worker 版は並行して deploy されたままで、
+;; その描画は 1 byte も変わらない。
+;;
+;; **ページのデータは wrangler.jsonc から読む。手で写さない。** capability の
+;; 宣言（APP_CAPABILITIES）は Worker が実行時に env から読むのと同じ値を、ここは
+;; ビルド時に同じファイルから読む。写しを置けば 2 つ目の宣言になり、この repo が
+;; 既に抱えている『operation 数の宣言の食い違い』を 1 つ増やすだけである。
+;;
+;; 出力は決定的である（時刻を入れない: :built-at は nil）。同じ tree と同じ
+;; jp-go-dds からは同じ byte 列が出る —— content-addressed な公開では、内容が
+;; 変わらないのに CID が変わることは『別の文書を出した』のと同じ意味になる。
+;;
+;; ソースは `.kotoba` で、sci の resolver は `.cljk` しか探さないので、
+;; route / view は require ではなく load-file で読む。jp-go-dds と html / css は
+;; --classpath で渡す（docs/operator-quickstart.md §3 と同じ checkout）。
+;; DADS の CSS はその classpath の jp-go-dds の隣（resources/）から取る。
+;;
+;; Usage:
+;;   K=~/github/com-junkawasaki/orgs/kotoba-lang
+;;   kbb --backend sci \
+;;     --classpath "$K/jp-go-digital-design-system/src:$K/html/src:$K/css/src" \
+;;     scripts/render-static.kotoba [<dir>]                 (<dir> FIRST, default ".")
+;; Exit:   0 書いた · 1 描いたものが Worker にしか無いものを含む（書かない）
+;;         2 判定できなかった（CSS・wrangler.jsonc が読めない等）
+
+(require '["node:fs" :as fs]
+         '["node:path" :as path]
+         '[nbb.core :refer [load-file]]
+         '[nbb.classpath :as ncp]
+         '[kotoba.lang.text :as str])
+
+(def root (.resolve path (or (first (remove #(str/starts-with? % "--") *command-line-args*)) ".")))
+
+(defn undetermined! [m]
+  (println (str "UNDETERMINED\t" m))
+  (println "Refusing to write a static edition from a tree that could not be read completely.")
+  (js/process.exit 2))
+
+(defn slurp* [rel] (try (.readFileSync fs (.join path root rel) "utf8") (catch :default _ nil)))
+(defn strip-jsonc [s] (str/replace s #"(?m)^\s*//.*$" ""))
+
+(def dds-css-path
+  "classpath 上の jp-go-dds の src の隣にある CSS。checkout を 2 箇所で名指し
+  しないため（--classpath と別の引数で CSS を渡すと、両者が別の版を指し得る）。"
+  (some (fn [entry]
+          (let [p (.join path entry ".." "resources" "jp_go_dds" "dds.css")]
+            (when (.existsSync fs p) p)))
+        (str/split (ncp/get-classpath) #":")))
+
+(def wrangler-vars
+  (let [w (slurp* "wrangler.jsonc")]
+    (when-not w (undetermined! "wrangler.jsonc unreadable"))
+    (try (js->clj (get (js->clj (.parse js/JSON (strip-jsonc w)) :keywordize-keys false) "vars"))
+         (catch :default e (undetermined! (str "wrangler.jsonc does not parse: " (.-message e)))))))
+
+(when-not dds-css-path
+  (undetermined! "jp_go_dds/dds.css not found next to any classpath entry (pass jp-go-dds src via --classpath)"))
+
+(defn forbidden
+  "静的版に出てはならないもの。Worker にしか存在しない経路・中継先・env のキー。
+  キーは wrangler.jsonc が実際に宣言しているものを全部見る。"
+  [mcp-url]
+  (concat ["/xrpc" "/health" mcp-url] (keys wrangler-vars)))
+
+(-> (load-file (.join path root "src/air_ffp/route.kotoba"))
+    (.then (fn [_] (load-file (.join path root "src/air_ffp/view.kotoba"))))
+    (.then
+     (fn [_]
+       (let [routes @(resolve 'air-ffp.route/routes)
+             declared-capabilities @(resolve 'air-ffp.route/declared-capabilities)
+             mcp-router-url @(resolve 'air-ffp.route/mcp-router-url)
+             render @(resolve 'air-ffp.view/render)
+             vars (into {} (map (fn [[k v]] [(keyword k) v])) wrangler-vars)
+             html (render {:css (.readFileSync fs dds-css-path "utf8")
+                           :routes routes
+                           :capabilities (declared-capabilities (:APP_CAPABILITIES vars))
+                           :built-at nil
+                           :static? true})
+             leaked (vec (filter #(str/includes? html %) (forbidden (mcp-router-url vars))))
+             out (.join path root "dist" "static" "index.html")]
+         (when (seq leaked)
+           (println (str "FAIL\tstatic edition mentions Worker-only things: " (pr-str leaked)))
+           (js/process.exit 1))
+         (.mkdirSync fs (.dirname path out) #js {:recursive true})
+         (.writeFileSync fs out html)
+         (println (str "WROTE\t" (.relative path root out) "\t" (count html) " chars"))))))
