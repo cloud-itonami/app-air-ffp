@@ -34,69 +34,124 @@
            (:route/doc r)])
         routes))
 
+(defn- page-routes
+  "静的版の route 表に載せてよいもの＝`:route/kind :page` だけ。
+
+  静的版には Worker が居ないので、`/health` も `/xrpc/:nsid` も**答えない**。
+  それを表に残せば、答えない経路を広告することになる —— docs/adr/0001 が
+  記録した『表示と実体のずれ』と同型の欠陥を、版を増やすことで作り直す。
+  route 表そのものは 1 つのまま、kind で絞って描く。"
+  [routes]
+  (filterv #(= :page (:route/kind %)) routes))
+
+(defn- static-edition-section
+  "静的版であることを述べる節。
+
+  静的版は IPFS に置く content-addressed な文書で、正規の所在は IPNS 名
+  （`ipns://k51…`）である。DNS の名前はそこへの別名にすぎない —— 名前が
+  変わっても内容のアドレスは変わらず、逆に内容が変われば別の文書になる。
+  中継・生存確認・実行時の設定はどれも Worker の実行時にしか存在しないので、
+  ここではそれらが**この版には無い**ことだけを書き、値は出さない。"
+  []
+  (dds/section
+   {:title "この版について"}
+   [:p {:class "ffp-lede"}
+    "これは IPFS に公開した content-addressed な静的版である。正規の所在は "
+    "IPNS 名（" [:span {:class "ffp-mono"} "ipns://k51…"] "）で、"
+    "DNS の名前はその別名にすぎない。"]
+   [:p {:class "ffp-note"}
+    "XRPC の中継は Worker 版にだけある。この版はこのページ 1 枚だけで、"
+    "中継先も実行時の設定も持たない。"]))
+
 (defn body
   "opts:
    :routes       air-ffp.route/routes（この Worker が実際に答えるもの）
    :vars         wrangler が渡した env のキー（**キー名だけ**。値は出さない）
    :capabilities APP_CAPABILITIES を解いたもの（**値を出す**。公開宣言なので）
    :mcp-url      XRPC の中継先（route/mcp-router-url の戻り値。**値を出す**）
-   :built-at     bundle のビルド時刻（不明なら nil）"
-  [{:keys [routes vars capabilities mcp-url built-at]}]
-  (dds/container
-   (dds/section
-    {}
-    (dds/heading 1 "Air FFP — Frequent Flyer Program")
-    [:p {:class "ffp-lede"}
-     "航空会社のマイレージ会員プログラムの appview 公開面。会員登録・マイル"
-     "加算・特典交換といった処理そのものはここには無く、この面は XRPC を "
-     "MCP router へ中継する。"])
+   :built-at     bundle のビルド時刻（不明なら nil）
+   :static?      true なら IPFS に置く静的版として描く。Worker にしか無いもの
+                 （`/health`・`/xrpc/:nsid`・中継先・env のキー）を出さない。
+                 :capabilities はビルド時に wrangler.jsonc から読んだもの。
+                 無ければ（Worker）これまでと 1 byte も変わらない"
+  [{:keys [routes vars capabilities mcp-url built-at static?]}]
+  ;; nil の子を container に渡さない。整形器は子の並びに nil が混ざると
+  ;; 折り返しを変えるので、静的版の節を `(when static? …)` のまま置くと
+  ;; Worker 版の HTML が変わる（実測: 整形が 1 段ずれた）。
+  (apply dds/container
+   (remove nil?
+    [(dds/section
+      {}
+      (dds/heading 1 "Air FFP — Frequent Flyer Program")
+      (if static?
+        [:p {:class "ffp-lede"}
+         "航空会社のマイレージ会員プログラムの appview 公開面。会員登録・マイル"
+         "加算・特典交換といった処理そのものはここには無い。"]
+        [:p {:class "ffp-lede"}
+         "航空会社のマイレージ会員プログラムの appview 公開面。会員登録・マイル"
+         "加算・特典交換といった処理そのものはここには無く、この面は XRPC を "
+         "MCP router へ中継する。"]))
 
-   (dds/section
-    {:title "この面が答えるもの"}
-    (dds/table {:caption "公開ルート"
-                :headers ["METHOD" "PATH" "何をするか"]
-                :rows (route-rows routes)})
-    [:p {:class "ffp-note"}
-     "この表は Worker の route 表そのものから描いている。ページに焼いた値では"
-     "ないので、実際に答えるものと表示がずれない。"])
+     (when static? (static-edition-section))
 
-   (dds/section
-    {:title "宣言されている capability"}
-    (if (seq capabilities)
-      [:div
-       (into [:p] (interpose " " (map (fn [c] (dds/chip-label c)) capabilities)))
-       [:p {:class "ffp-note"}
-        "出所は env の "
-        [:span {:class "ffp-mono"} "APP_CAPABILITIES"]
-        " —— 実行時に consumer が読む唯一の宣言である。**ページに焼いていない**"
-        "ので、設定を変えればここも変わる。"
-        "なおこの repo には operation 数の宣言が複数あって食い違っている"
-        "（docs/operator-quickstart.md）。ここが出すのは実行時の値だけで、"
-        "どれが正しいかは主張しない。"]]
-      [:p {:class "ffp-note"}
-       "APP_CAPABILITIES が渡されていない（ローカル描画、または未設定）。"]))
+     (dds/section
+      {:title "この面が答えるもの"}
+      (dds/table {:caption "公開ルート"
+                  :headers ["METHOD" "PATH" "何をするか"]
+                  :rows (route-rows (if static? (page-routes routes) routes))})
+      (if static?
+        [:p {:class "ffp-note"}
+         "この表は Worker と同じ route 表から、ページだけを絞って描いている。"
+         "静的版が答えるのはこのページだけである。"]
+        [:p {:class "ffp-note"}
+         "この表は Worker の route 表そのものから描いている。ページに焼いた値では"
+         "ないので、実際に答えるものと表示がずれない。"]))
 
-   (dds/section
-    {:title "実行時の設定"}
-    (if (seq vars)
-      [:div
-       (into [:p] (interpose " " (map (fn [k] (dds/chip-label (name k))) vars)))
-       [:p {:class "ffp-note"}
-        "**キー名のみ。値は出さない** —— ただし上の capability と下の中継先は"
-        "例外で、値そのものを出している。どちらも公開宣言であり、運用者が"
-        "外から見る必要があるので意図的に表示する。それ以外の値は出さない。"]]
-      [:p {:class "ffp-note"} "env が渡されていない（ローカル描画）。"])
-    [:p {:class "ffp-note"} "XRPC の中継先: "
-     [:span {:class "ffp-mono"} mcp-url]])
+     (dds/section
+      {:title "宣言されている capability"}
+      (if (seq capabilities)
+        [:div
+         (into [:p] (interpose " " (map (fn [c] (dds/chip-label c)) capabilities)))
+         (if static?
+           [:p {:class "ffp-note"}
+            "出所は Worker が実行時に読むのと同じ wrangler.jsonc の宣言で、"
+            "静的版はそれをビルド時に読んで描いた。ソースに手で写していないので、"
+            "宣言を変えて描き直せばここも変わる。"]
+           [:p {:class "ffp-note"}
+            "出所は env の "
+            [:span {:class "ffp-mono"} "APP_CAPABILITIES"]
+            " —— 実行時に consumer が読む唯一の宣言である。**ページに焼いていない**"
+            "ので、設定を変えればここも変わる。"
+            "なおこの repo には operation 数の宣言が複数あって食い違っている"
+            "（docs/operator-quickstart.md）。ここが出すのは実行時の値だけで、"
+            "どれが正しいかは主張しない。"])]
+        (if static?
+          [:p {:class "ffp-note"} "wrangler.jsonc に capability の宣言が無い。"]
+          [:p {:class "ffp-note"}
+           "APP_CAPABILITIES が渡されていない（ローカル描画、または未設定）。"])))
 
-   (dds/section
-    {:title "現在地"}
-    [:p {:class "ffp-lede"}
-     "この appview は TypeScript/Svelte から ClojureScript へ移行済み。"
-     "deploy される bundle は、いま読んでいるソースからコンパイルされたもので"
-     "ある（docs/adr/0001）。"]
-    (when built-at
-      [:p {:class "ffp-note"} "bundle build: " built-at]))))
+     (when-not static?
+       (dds/section
+        {:title "実行時の設定"}
+        (if (seq vars)
+          [:div
+           (into [:p] (interpose " " (map (fn [k] (dds/chip-label (name k))) vars)))
+           [:p {:class "ffp-note"}
+            "**キー名のみ。値は出さない** —— ただし上の capability と下の中継先は"
+            "例外で、値そのものを出している。どちらも公開宣言であり、運用者が"
+            "外から見る必要があるので意図的に表示する。それ以外の値は出さない。"]]
+          [:p {:class "ffp-note"} "env が渡されていない（ローカル描画）。"])
+        [:p {:class "ffp-note"} "XRPC の中継先: "
+         [:span {:class "ffp-mono"} mcp-url]]))
+
+     (dds/section
+      {:title "現在地"}
+      [:p {:class "ffp-lede"}
+       "この appview は TypeScript/Svelte から ClojureScript へ移行済み。"
+       "deploy される bundle は、いま読んでいるソースからコンパイルされたもので"
+       "ある（docs/adr/0001）。"]
+      (when built-at
+        [:p {:class "ffp-note"} "bundle build: " built-at]))])))
 
 (defn render
   "完全な HTML 文書。`css` は呼び出し側が渡す(ライブラリは I/O を持たない)。"

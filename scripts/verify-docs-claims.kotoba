@@ -29,7 +29,7 @@
 (def root (or (first (remove #(str/starts-with? % "--") *command-line-args*)) "."))
 
 (def claims
-  {:tracked-files 26
+  {:tracked-files 27
    :inherited-bytes 4290           ; the 5 inherited files still carried unchanged
    :svelte-artifacts 0             ; no .svelte / svelte.config / svelte-dir file survives
    :sveltekit-compat-flags 0       ; nodejs_compat / nodejs_als were adapter-cloudflare's
@@ -218,8 +218,8 @@
         (undet! "view.cljc or worker.cljs unreadable")
         (do
           (check! :page-renders-route-table true
-                  (and (str/includes? v "[{:keys [routes vars capabilities mcp-url built-at]}]")
-                       (str/includes? v "(route-rows routes)")
+                  (and (str/includes? v "[{:keys [routes vars capabilities mcp-url built-at static?]}]")
+                       (str/includes? v "(route-rows (if static? (page-routes routes) routes))")
                        (str/includes? w ":routes route/routes")))
           (check! :page-reads-capabilities-from-env true
                   (str/includes? w "(route/declared-capabilities (:APP_CAPABILITIES e))")))))

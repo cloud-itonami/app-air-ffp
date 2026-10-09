@@ -50,6 +50,31 @@ route 表を渡す側が持ち、ページは描くだけなので、両者が�
 `/health` は移行前 `src/app.ts` に在ったが**どこにも deploy されていなかった**。
 今回それを実際に deploy される面へ持ち上げたので、**これは移植ではなく追加である。**
 
+## Static edition (IPFS)
+
+Worker の `GET /` はどの request にも同じ文書を返すので、それを**ビルド時に
+1 度描いた静的版**を IPFS に置く。正規の所在は IPNS 名（`ipns://k51…` /
+`{k51}.ipns` の gateway origin）で、DNS の名前はその別名である。**Worker 版は
+並行して deploy されたままで、その描画は 1 byte も変わらない**（`:static?` が
+無ければ従来の分岐をそのまま通る）。
+
+静的版には Worker が居ないので、ページは `/health`・`/xrpc/:nsid`・中継先・
+env のキーを**出さない**。route 表は `:route/kind :page` の行だけを描き、XRPC の
+中継は Worker 版にだけあると書く。capability の一覧は `wrangler.jsonc` の
+`APP_CAPABILITIES` を**ビルド時に読む**（手で写さない）。
+
+```bash
+K=~/github/com-junkawasaki/orgs/kotoba-lang
+kbb --backend sci \
+  --classpath "$K/jp-go-digital-design-system/src:$K/html/src:$K/css/src" \
+  scripts/render-static.kotoba .
+# => WROTE  dist/static/index.html   (dist/ は .gitignore 済み)
+```
+
+出力は決定的である（時刻を入れない）。2 回描いて sha256 が一致することを確認
+してから publish する。描いたものに `/xrpc`・`/health`・中継先・wrangler の
+var のキーが 1 つでも含まれていれば、書かずに exit 1 で止まる。
+
 ## `kotoba/` は残す —— これは移行ではなく破壊になるところだった
 
 この repo には appview とは別に **`kotoba/`（TypeScript のドメインライブラリ、
@@ -75,14 +100,15 @@ git URL 固定 SHA。**GitHub API ではなく git に訊いた**（API は実�
 nested install を `EALLOWSCRIPTS` で拒否する（旧 quickstart §6 が記録済み。
 今回の移行はこれを直していない）。
 
-## いま在るもの — 25 ファイル
+## いま在るもの — 27 ファイル
 
 | 面 | ファイル |
 |---|---|
 | 判断・描画・edge | `src/air_ffp/{route.cljc, view.cljc, worker.cljs}` |
-| テスト | `test/air_ffp/route_test.cljc`（6 tests / 30 assertions） |
+| テスト | `test/air_ffp/route_test.cljc`（8 tests / 54 assertions） |
 | ビルド | `deps.edn` / `shadow-cljs.edn` / `.gitignore` |
 | 検査 | `scripts/{smoke-worker.cljs, verify-docs-claims.cljs}` |
+| 静的版のビルド | `scripts/render-static.kotoba` |
 | Worker 設定 | `wrangler.jsonc` |
 | ドメインライブラリ（移行対象外） | `kotoba/`（7 ファイル） |
 | actor 記述子 | `kotodama.jsonld` |
